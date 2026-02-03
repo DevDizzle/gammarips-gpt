@@ -1,23 +1,70 @@
 openapi: 3.1.0
 info:
-  title: ProfitScout Generic API
-  version: 1.1.3
+  title: GammaRips Intelligence API
+  version: 1.5.0
   description: >
-    Read-only API exposing ProfitScout datasets discovered from GCS.
-    Dataset names map 1:1 to top-level folders (e.g., `recommendations`, `technicals`,
-    `technicals-analysis`, `news-analysis`, `earnings-call-transcripts`, `transcript-analysis`,
-    `business-summaries`, `financials-analysis`, `fundamentals-analysis`, `financial-statements`,
-    `key-metrics`, `ratios`, `headline-news`, `prices`, `price-chart-json`,
-    `sec-business`, `sec-mda`, `sec-risk`). The actual list is discovered at runtime via GET /v1.
+    API exposing GammaRips "High Gamma" options signals and deep-dive financial research.
+    Combines live BigQuery analysis (Winners Dashboard) with static GCS artifacts.
 servers:
-  - url: https://profitscout-api-469352939749.us-central1.run.app
+  - url: https://gammarips-api-469352939749.us-central1.run.app
 
 paths:
+  /v1/options-signals/top:
+    get:
+      operationId: getWinnersDashboard
+      summary: Get today's top-ranked options setups
+      description: >
+        Returns the "Winners Dashboard" — a ranked list of high-probability options setups sourced
+        live from BigQuery. Filters by trend alignment, volatility favorability, and quality score.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Max number of signals to return (default 10).
+          schema: { type: integer, default: 10 }
+        - name: option_type
+          in: query
+          required: false
+          description: Filter by 'CALL' or 'PUT'.
+          schema: { type: string, enum: [CALL, PUT] }
+        - name: as_of
+          in: query
+          required: false
+          description: Date (YYYY-MM-DD) or 'latest'.
+          schema: { type: string, default: latest }
+      responses:
+        '200':
+          description: Top signals returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalList' }
+
+  /v1/options-signals/{ticker}:
+    get:
+      operationId: getTickerSignals
+      summary: Get all active signals for a specific ticker
+      description: Retrieves all "High Gamma" setups for a specific stock symbol.
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema: { type: string }
+        - name: as_of
+          in: query
+          required: false
+          schema: { type: string, default: latest }
+      responses:
+        '200':
+          description: Signals found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignalList' }
+
   /v1:
     get:
       operationId: listDatasets
       summary: List available datasets
-      description: Lists top-level folders in the ProfitScout GCS bucket (datasets).
+      description: Lists top-level folders in the Data Lake (e.g., technicals, recommendations).
       responses:
         '200':
           description: Datasets available.
@@ -25,177 +72,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DatasetList'
-              examples:
-                example:
-                  value:
-                    datasets:
-                      - recommendations
-                      - technicals
-                      - technicals-analysis
-                      - news-analysis
-                      - earnings-call-transcripts
-                      - transcript-analysis
-                      - business-summaries
-                      - financials-analysis
-                      - fundamentals-analysis
-                      - financial-statements
-                      - key-metrics
-                      - ratios
-                      - headline-news
-                      - prices
-                      - price-chart-json
-                      - sec-business
-                      - sec-mda
-                      - sec-risk
-        '500':
-          description: Unexpected server error.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
 
   /v1/{dataset}:
     get:
       operationId: listItems
       summary: List items in a dataset
-      description: >
-        Lists items (e.g., symbols, document IDs) within a dataset. Supports pagination.
-        The {dataset} name must match an actual folder returned by GET /v1.
+      description: Lists tickers available in a specific dataset folder.
       parameters:
         - name: dataset
           in: path
           required: true
-          description: Dataset name (top-level folder).
-          schema: { type: string }
-        - name: limit
-          in: query
-          required: false
-          description: Max items to return.
-          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
-        - name: pageToken
-          in: query
-          required: false
-          description: Token for the next page of results.
           schema: { type: string }
       responses:
         '200':
           description: List response.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/ItemList'
-              examples:
-                recommendations:
-                  value:
-                    dataset: recommendations
-                    items:
-                      - id: AAPL
-                        href: https://profitscout-api-2lshkth7qq-uc.a.run.app/v1/recommendations/AAPL?as_of=latest
-                      - id: TSLA
-                        href: https://profitscout-api-2lshkth7qq-uc.a.run.app/v1/recommendations/TSLA?as_of=latest
-                    nextPageToken: ""
-                technicals:
-                  value:
-                    dataset: technicals
-                    items:
-                      - id: AAL
-                        href: https://profitscout-api-2lshkth7qq-uc.a.run.app/v1/technicals/AAL?as_of=latest
-                    nextPageToken: ""
-        '404':
-          description: Dataset not found.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '429':
-          description: Rate limited.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema: { $ref: '#/components/schemas/ItemList' }
 
   /v1/{dataset}/{id}:
     get:
       operationId: getItem
-      summary: Get a specific item from a dataset
-      description: >
-        Retrieves a single item by ID (e.g., stock symbol). If `as_of=latest`, the server resolves to
-        the most recent object/manifest. Response is always JSON; Markdown/raw may be included in fields.
+      summary: Get a specific analysis artifact
+      description: Retrieves a deep-dive JSON or Markdown file for a ticker (e.g. detailed technicals).
       parameters:
         - name: dataset
           in: path
           required: true
-          description: Dataset name (top-level folder).
           schema: { type: string }
         - name: id
           in: path
           required: true
-          description: Item identifier (e.g., stock symbol like AAPL).
+          description: Stock Symbol (e.g. AAPL)
           schema: { type: string }
         - name: as_of
           in: query
           required: false
-          description: YYYY-MM-DD or 'latest'.
           schema: { type: string, default: latest }
-        - name: format
-          in: query
-          required: false
-          description: >
-            Formatting preference. API still returns JSON, but may include `summary_md` or a `raw` field.
-          schema:
-            type: string
-            enum: [json, md, raw]
-            default: json
       responses:
         '200':
           description: Item payload.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Item'
-              examples:
-                recommendation:
-                  value:
-                    dataset: recommendations
-                    id: AAL
-                    as_of: '2025-10-15T00:00:00Z'
-                    summary_md: "## American Airlines Group Inc. (AAL)\n**Outlook:** Neutral / Mixed\n..."
-                    artifact_url: "https://storage.googleapis.com/profit-scout-data/recommendations/AAL_recommendation_2025-10-15.md"
-                    source: "ProfitScout"
-                    disclaimer: "Educational only; not investment advice."
-                technicals:
-                  value:
-                    dataset: technicals
-                    id: AAL
-                    as_of: '2025-08-29T00:00:00Z'
-                    metrics:
-                      SMA_50: 12.09
-                      SMA_200: 13.24
-                      EMA_21: 12.74
-                      MACD_12_26_9: 0.381
-                      RSI_14: 60.9
-                      "52w_high": 19.1
-                      "52w_low": 8.5
-                    source: "ProfitScout"
-                    disclaimer: "Educational only; not investment advice."
-        '404':
-          description: Item not found.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '429':
-          description: Rate limited.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500':
-          description: Unexpected server error.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema: { $ref: '#/components/schemas/Item' }
 
 components:
   schemas:
     DatasetList:
       type: object
-      required: [datasets]
       properties:
         datasets:
           type: array
@@ -203,10 +127,8 @@ components:
 
     ItemList:
       type: object
-      required: [dataset, items]
       properties:
-        dataset:
-          type: string
+        dataset: { type: string }
         items:
           type: array
           items:
@@ -214,45 +136,38 @@ components:
             properties:
               id: { type: string }
               href: { type: string }
-        nextPageToken:
-          type: string
-          description: >
-            Pass this back to `pageToken` to fetch the next page, if present.
+
+    SignalList:
+      type: object
+      properties:
+        dataset: { type: string }
+        as_of: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticker: { type: string }
+              option_type: { type: string }
+              strike: { type: number }
+              expiration: { type: string }
+              setup_quality_signal: { type: string }
+              weighted_score: { type: number }
+              analysis_summary: { type: string }
 
     Item:
       type: object
-      required: [dataset, id, as_of, source]
       properties:
         dataset: { type: string }
         id: { type: string }
-        as_of:
-          type: string
-          format: date-time
-        summary_md:
-          type: string
-          description: Markdown summary if available.
-        artifact_url:
-          type: string
-          format: uri
-        source:
-          type: string
-          example: ProfitScout
-        disclaimer:
-          type: string
-          example: Educational only; not investment advice.
-        metrics:
-          type: object
-          additionalProperties: true
-        risks:
-          type: array
-          items: { type: string }
-        key_levels:
-          type: object
-          additionalProperties: true
+        as_of: { type: string }
+        summary_md: { type: string }
+        metrics: { type: object }
+        source: { type: string }
+        disclaimer: { type: string }
 
     Error:
       type: object
       required: [error]
       properties:
         error: { type: string }
-        hint: { type: string }
