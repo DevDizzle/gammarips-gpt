@@ -1,20 +1,28 @@
-# ProfitScout GCS Glossary
+# GammaRips Data Glossary
 
-This glossary describes the contents and intended use of each folder in the ProfitScout GCS bucket. Use it to choose the right dataset for a user’s question and map intent to API endpoints.
+This glossary describes the datasets available via the **GammaRips API**. Use it to choose the right dataset for a user’s question and map intent to API endpoints.
 
 ---
 
-## Final Recommendations
+## 🚀 Live Market Intelligence (Dynamic)
+
+### `options-signals` (BigQuery)
+**What it contains:** Real-time "High Gamma" options setups sourced from the **Winners Dashboard**.
+**Best for:** "What are the top trades today?", "Find me explosive Call options.", "Show me the market structure for NVDA."
+**Key Endpoints:**
+*   `/v1/options-signals/top`: Returns ranked list of highest probability setups (Trend + Vol + Quality).
+*   `/v1/options-signals/{ticker}`: Returns all active signals for a specific ticker.
+**Keys returned:** `ticker`, `option_type`, `strike`, `expiration`, `setup_quality_signal`, `stock_price_trend_signal`, `volatility_comparison_signal`, `weighted_score`.
+
+---
+
+## 📂 Static Analysis (GCS Data Lake)
 
 ### `recommendations/`
 **What it contains:** The final, daily stock-level recommendation aggregating underlying analysis scores. Each ticker has a JSON with scores and a user-facing Markdown summary.  
 **Best for:** “What’s the outlook on TSLA today?”, “Summarize the thesis for AAPL.”, “Bullish or bearish on GOOGL?”  
 **Keys returned:** `outlook_signal`, `weighted_score`, `summary_md`, `artifact_url`.  
 **ID format:** `{TICKER}.json` and `{TICKER}.md` (use `as_of` query param to select date).
-
----
-
-## AI-Generated Analysis & Summaries
 
 ### `news-analysis/`
 **What it contains:** Short-term sentiment score and narrative analysis based on the day’s headlines.  
@@ -28,8 +36,8 @@ This glossary describes the contents and intended use of each folder in the Prof
 **Keys returned:** `score` (0–1), `analysis` (paragraph).  
 **Source data:** `technicals/`
 
-### `transcript-analysis/` or `earnings-call-summaries/`
-**What they contain:** Summaries, key themes, and sentiment extracted from earnings call transcripts.  
+### `transcript-analysis/`
+**What it contains:** Summaries, key themes, and sentiment extracted from earnings call transcripts.  
 **Best for:** “Summarize the latest earnings call for AMZN.”, “Key quotes/themes from AAPL’s last call?”  
 **Keys returned:** `summary_md`, `key_themes_bullets`, `sentiment_score`, link to raw transcript.  
 **Source data:** `earnings-call-transcripts/`
@@ -53,7 +61,7 @@ This glossary describes the contents and intended use of each folder in the Prof
 
 ---
 
-## Raw Data & Inputs
+## 🧱 Raw Data & Inputs
 
 ### `headline-news/`
 **What it contains:** Curated raw JSON of daily news headlines and snippets per ticker.  
@@ -83,40 +91,26 @@ This glossary describes the contents and intended use of each folder in the Prof
 
 ---
 
-## Visualization & UI Assets
+## 📊 Visualization & UI Assets
 
 ### `price-chart-json/`
 **What it contains:** Pre-formatted JSON payloads for charting libraries.  
 **Best for:** “Show last 6 months of price candles for GOOGL.”  
 **Source data:** `prices/`
 
-### `images/`, `pages/`, `dashboards/`
-**What they contain:** Static assets, logos, web pages, and dashboard configs.  
-**Note:** Not typically called directly by the agent.
-
----
-
-## Utilities & Internal
-
-### `prep/`
-**What it contains:** Staging area for intermediate/temporary pipeline artifacts.  
-**Note:** Not for direct agent use.
-
-### `tickerlist.txt`
-**What it contains:** Master list of stock tickers covered by ProfitScout.  
-**Best for:** “Which stocks do you cover?”
-
 ---
 
 ## API Usage Hints (for the Agent)
 
+- **Top Priority:** Check `/v1/options-signals` first for active trading ideas.
 - Discover datasets: `GET /v1`  
 - List items in a dataset: `GET /v1/{dataset}`  
 - Retrieve latest for a ticker: `GET /v1/{dataset}/{symbol}?as_of=latest`  
 - Prefer the most specific dataset that answers the question:
+  - **Live Trade Ideas** → `options-signals`
   - key levels → `technicals` or `technicals-analysis`  
   - momentum/technicals → `technicals-analysis`  
   - broad thesis → `recommendations`  
   - earnings call context → `earnings-call-transcripts` + `transcript-analysis`  
-- Always include the `as_of` timestamp and “Source: ProfitScout.”  
+- Always include the `as_of` timestamp and “Source: GammaRips Intelligence.”  
 - Educational only; not investment advice.

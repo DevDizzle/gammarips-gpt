@@ -1,89 +1,107 @@
-# ProfitScout API
+# GammaRips API
 
-Python-based **FastAPI** backend for the ProfitScout GPT. This API serves AI-driven financial research, pulling stock and options-trading data from **Google Cloud Storage (GCS)** and **BigQuery**.
+**GammaRips Intelligence** (formerly ProfitScout) is the backend engine for our AI-driven financial research. It serves "High Gamma" options setups, strict market structure analysis, and grounded financial data by unifying **Google Cloud Storage (GCS)** and **Google BigQuery**.
 
----
-
-## API Overview
-
-This API serves financial data from two primary sources:
-
-- **Google Cloud Storage (GCS):** Provides access to file-based datasets (e.g., `.md`, `.json`) stored in the `profit-scout-data` bucket. Used for datasets like **recommendations**, **technicals**, and **news-analysis**.
-- **Google BigQuery:** Powers “virtual datasets” that are queried live. The primary example is the **options-signals** dataset, which queries the `options_analysis_signals` table in BigQuery.
+> **Mission:** Stop guessing. Access the **GammaRips Winners Dashboard**—a rigorous, data-driven pipeline that identifies explosive options setups verified against live Volatility/OI walls.
 
 ---
 
-## Available Endpoints
+## 🚀 API Overview
 
-### General
+This API is designed to be the "Truth Source" for the GammaRips GPT. It routes requests to the appropriate data engine based on the endpoint:
 
-- `GET /v1`  
-  **Summary:** List all available datasets from both GCS and BigQuery.
+- **Live Market Data (BigQuery):** Powers the **Winners Dashboard**. Queries live signals for "High Gamma" setups (Trend + Vol + Quality).
+- **Static Intelligence (GCS):** Powers deep-dive analysis. Serves pre-computed datasets like **recommendations**, **technicals**, and **news-analysis** stored as JSON/Markdown artifacts.
 
-### GCS Datasets
-
-- `GET /v1/{dataset}/{id}`  
-  **Summary:** Get a specific item from a GCS dataset (e.g., get recommendations for `AAPL`).  
-  **Parameters:**  
-  - `as_of`: A date (`YYYY-MM-DD`) or `'latest'` (default).
-
-### Options Signals (BigQuery)
-
-- `GET /v1/options-signals`  
-  **Summary:** List distinct tickers that have available options signals.
-
-- `GET /v1/options-signals/top`  
-  **Summary:** Get the top-ranked options signals across all tickers for a given day.
-
-- `GET /v1/options-signals/{ticker}`  
-  **Summary:** Get the top-ranked options signals for a specific ticker.
+### Key Capabilities
+*   **Strict Data Grounding:** Every signal is verified. No hallucinations.
+*   **Clean Filtering:** Instantly filter for top-tier **CALL** or **PUT** setups based on proprietary quality scores.
+*   **Market Structure:** Deep dives into Gamma Exposure and key support/resistance levels.
 
 ---
 
-## GCS Datasets
+## 🛣️ How to Route
 
-- Datasets are represented by top-level folders in the `profit-scout-data` GCS bucket.  
-  For example, the folder `recommendations` corresponds to the **recommendations** dataset.
+The API uses a dual-routing architecture to ensure speed and freshness:
 
-### Dataset Naming
+### 1. Dynamic Signals (The "Hot" Path)
+**Route:** `/v1/options-signals/*`  
+**Source:** BigQuery (`options_analysis_signals` table)  
+**Latency:** ~500ms - 2s  
+**Use Case:** finding today's best trades.
+- `GET /v1/options-signals/top`: Returns the "Winners Dashboard" — ranked list of highest probability setups.
+- `GET /v1/options-signals/{ticker}`: Returns all signals for a specific ticker.
 
-- Dataset names should be **lowercase** and contain only **letters**, **numbers**, and **hyphens**.
-- Each dataset folder contains data for different symbols or entities.
+### 2. Static Artifacts (The "Cold" Path)
+**Route:** `/v1/{dataset}/{id}`  
+**Source:** GCS (`profit-scout-data` bucket)  
+**Latency:** < 200ms (Cached)  
+**Use Case:** Context, fundamental research, and "Why" analysis.
+- The API automatically finds the "best artifact" for a given ticker by looking for the latest file in the corresponding folder.
+- Supports `as_of=YYYY-MM-DD` to time-travel to past analysis.
 
 ---
 
-## GCS Manifests
+## 📂 Folder Glossary (Dataset Mapping)
 
-To speed up the resolution of the `"latest"` version of an item, the API **used to** use manifest files.
+The API exposes the following datasets, which map 1:1 to folders in our Data Lake (GCS).
 
-> **Note:** The current implementation in `app/main.py` appears to use a fallback mechanism by default—listing blobs and sorting them to find the best artifact—rather than relying on manifests. This section is kept for historical context.
+| Dataset Endpoint | GCS Folder | Description |
+| :--- | :--- | :--- |
+| `recommendations` | `/recommendations` | Analyst-grade summary & outlook (Buy/Sell/Hold). |
+| `technicals` | `/technicals` | Key levels, RSI, MACD, and trend indicators. |
+| `technicals-analysis` | `/technicals-analysis` | AI commentary on technical patterns. |
+| `news-analysis` | `/headline-news` | Sentiment scoring of recent headlines. |
+| `earnings-call-transcripts` | `/earnings-call-transcripts` | Raw text of earnings calls. |
+| `transcript-analysis` | `/transcript-analysis` | AI-summarized takeaways from earnings calls. |
+| `business-summaries` | `/business-summaries` | Company profile, segments, and competitors. |
+| `financials-analysis` | `/financials-analysis` | Deep dive on Balance Sheet & Cash Flow health. |
+| `fundamentals-analysis` | `/fundamentals-analysis` | Valuation metrics (PE, EV/EBITDA, Growth). |
+| `sec-mda` | `/sec-mda` | Management Discussion & Analysis from 10-K/10-Q. |
+| `sec-risk` | `/sec-risk` | Risk Factors section from SEC filings. |
 
-### Manifest Format
+---
 
-- Manifest files are stored in the `manifests` folder in the GCS bucket.
-- The path to a manifest for a given item is:  
-  `manifests/{dataset}/{id}.json`
+## 🛠️ Local Development
 
-**Example:**
-```json
-{
-  "latest_object": "recommendations/AAL_2025-10-15.md"
-}
-latest_object: The full path to the latest object in the GCS bucket.
+### Prerequisites
+- Python 3.11+
+- Google Cloud Credentials (Authorized for `profitscout-lx6bb` project)
 
+### Setup
+1. **Clone & Install:**
+   ```bash
+   git clone <repo>
+   cd gammarips-api
+   pip install -r app/requirements.txt
+   ```
+
+2. **Environment Variables:**
+   Create a `.env` file in the root:
+   ```env
+   GCP_PROJECT_ID=profitscout-lx6bb
+   GCS_BUCKET_NAME=profit-scout-data
+   BIGQUERY_DATASET=profit_scout
+   WINNERS_DASHBOARD_TABLE=options_analysis_signals
+   ```
+
+3. **Run Server:**
+   ```bash
+   chmod +x app/run.sh
+   ./app/run.sh
+   ```
+   Access documentation at: `http://localhost:8080/docs`
+
+### Docker Build
+```bash
+docker build -t gammarips-api .
+docker run -p 8080:8080 --env-file .env gammarips-api
 ```
 
-### Fallback Mechanism (Current)
-The API lists all objects for an item in the dataset folder (e.g., recommendations/AAPL*) and selects the best one based on:
+---
 
-The as_of date (if provided),
-
-Preferred file extensions,
-
-Object update time.
-
-This assumes a consistent naming convention for files such as:
-{id}_{YYYY-MM-DD}.{ext}
+## 🔒 Authentication (Coming Soon)
+Currently open for internal use. Future versions will require an `X-API-Key` header verified against our user database.
 
 ### License
-This project is licensed under the MIT License.
+Educational use only. Not investment advice.

@@ -6,13 +6,20 @@ from typing import Optional, List, Dict, Any
 import json
 import logging
 import re
+import os
+from dotenv import load_dotenv
+
 from routers import options_signals
+from data.gcs_client import GCSClient
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ProfitScout Generic API", version="1.4.0")
+app = FastAPI(title="ProfitScout Generic API", version="1.5.0")
 
 # Include routers
 app.include_router(options_signals.router, prefix="/v1")
@@ -26,14 +33,13 @@ app.add_middleware(
 )
 
 # --- GCS Client Dependency ---
-BUCKET_NAME = "profit-scout-data"
+# We use the GCSClient wrapper to ensure consistent config (Project/Bucket)
 DATE_REGEX = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})")
 
-def get_gcs_bucket():
-    """Provides a GCS bucket object, allowing for dependency injection."""
+def get_gcs_client():
+    """Provides a GCSClient instance."""
     try:
-        storage_client = storage.Client()
-        return storage_client.bucket(BUCKET_NAME)
+        return GCSClient()
     except Exception as e:
         logger.error(f"Failed to create GCS client: {e}")
         raise HTTPException(status_code=500, detail="Could not connect to Google Cloud Storage.")
@@ -109,9 +115,10 @@ def find_best_artifact(dataset: str, item_id: str, as_of: str, bucket: storage.B
 
 @app.get("/v1/{dataset}/{id}", summary="Get a specific item from a dataset")
 def get_dataset_item(
-    dataset: str, id: str, response: Response, as_of: str = "latest", bucket: storage.Bucket = Depends(get_gcs_bucket)
+    dataset: str, id: str, response: Response, as_of: str = "latest", gcs: GCSClient = Depends(get_gcs_client)
 ):
     response.headers["Cache-Control"] = "public, max-age=120"
+    bucket = gcs.bucket
     blob = find_best_artifact(dataset, id, as_of, bucket)
 
     if not blob:
@@ -138,8 +145,17 @@ def get_dataset_item(
         try:
             data = json.loads(content)
             if isinstance(data, dict):
-                envelope["summary_md"] = data.pop("analysis", data.pop("summary_md", None))
-                envelope["metrics"] = data
+                # If the JSON already contains specific analysis fields, lift them
+                if "analysis" in data:
+                    # Some files wrap data in "analysis"
+                    inner = data["analysis"]
+                    if isinstance(inner, dict):
+                         envelope["metrics"] = inner
+                    else:
+                         envelope["summary_md"] = str(inner)
+                else:
+                    envelope["summary_md"] = data.pop("summary_md", None)
+                    envelope["metrics"] = data
             else:
                 envelope["metrics"] = data
         except json.JSONDecodeError:
@@ -148,9 +164,10 @@ def get_dataset_item(
     return envelope
 
 @app.get("/v1", summary="List available datasets")
-def list_datasets(response: Response, bucket: storage.Bucket = Depends(get_gcs_bucket)):
+def list_datasets(response: Response, gcs: GCSClient = Depends(get_gcs_client)):
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
+        bucket = gcs.bucket
         iterator = bucket.list_blobs(prefix='', delimiter='/')
         prefixes = set(p for page in iterator.pages for p in page.prefixes)
         datasets = sorted([p.strip('/') for p in prefixes if p.strip('/') != 'manifests'])
